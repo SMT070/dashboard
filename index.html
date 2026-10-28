@@ -193,17 +193,29 @@ h1{font-weight:800;letter-spacing:-.02em;font-size:20px}
 .cd.off{border:0;background:none;box-shadow:none;min-height:0}
 @media(max-width:640px){.cd{min-height:58px;padding:4px;align-items:center}.chip,.more{display:none}.cn{flex-direction:column;gap:3px}.dn{font-size:13px}.bdg{min-width:17px;height:17px;font-size:10px;padding:0 4px}}
 </style>
+<style>
+.gate{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto;animation:fade .25s ease}
+#sync{font-size:12px;color:var(--mu)}
+.tabs{display:flex;gap:4px;margin-bottom:14px;background:var(--ac2);padding:4px;border-radius:10px}
+.tabs button{flex:1;border:0;background:none;color:var(--mu);padding:8px;border-radius:8px;cursor:pointer;font-weight:600;transition:background-color .2s,color .2s}
+.tabs button.on{background:var(--card);color:var(--tx);box-shadow:0 1px 3px var(--sh)}
+.chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--mu);cursor:pointer}
+.chk input{width:auto}
+#am{min-height:20px}#am.bad{color:var(--er)}#am.ok{color:var(--ok)}
+.btn:disabled{opacity:.6;cursor:wait}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 </head>
 <body>
 <header><h1>Startup Dashboard</h1>
-<nav id="nav"></nav><button class="tgl" id="tgl" onclick="toggleTheme()" aria-label="Switch dark or light theme">☀</button></header>
-<main id="main"></main><div id="dlg"></div>
-<footer>Saved in this browser · <button class="ghost" onclick="exp()">Export</button> · <button class="ghost" onclick="document.getElementById('imp').click()">Import</button><input id="imp" type="file" accept=".json" hidden onchange="imp(event)"></footer>
+<nav id="nav"></nav><span id="sync"></span><button class="ghost" id="out" style="display:none" onclick="signOut()">Sign out</button><button class="tgl" id="tgl" onclick="toggleTheme()" aria-label="Switch dark or light theme">☀</button></header>
+<main id="main"></main><div id="dlg"></div><div id="gate"><div class="gate"><div class="meta">Loading…</div></div></div>
+<footer>Synced to your account · <button class="ghost" onclick="exp()">Export</button> · <button class="ghost" onclick="document.getElementById('imp').click()">Import</button><input id="imp" type="file" accept=".json" hidden onchange="imp(event)"></footer>
 <script>
 const KEY='startup-dash-v1',TABS=['Overview','Tasks','Meetings','Notes','Goals'];
 let S={tasks:[],meetings:[],notes:[],goals:[]},tab='Overview',q='';
 try{const r=localStorage.getItem(KEY);if(r)S=Object.assign(S,JSON.parse(r))}catch(e){}
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}render()};
+const save=()=>{if(user)sched();else{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}render()};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const ymd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const today=()=>ymd(new Date());
@@ -287,7 +299,94 @@ for(let d=1;d<=dim;d++){const s=ymd(new Date(y,mo,d)),l=by[s]||[],n=l.length;
 cells+=`<button class="cd${n?' has':''}${s===t?' today':''}${s===selDay?' sel':''}" onclick="pickDay('${s}')" aria-label="${d}, ${n} meetings"><div class="cn"><span class="dn">${d}</span>${n?`<span class="bdg">${n}</span>`:''}</div>${l.slice(0,2).map(m=>`<span class="chip">${m.time?esc(m.time)+' ':''}${esc(m.title)}</span>`).join('')}${n>2?`<span class="more">+${n-2} more</span>`:''}</button>`}
 const day=by[selDay]||[],mk=ymd(cm).slice(0,7),nm=S.meetings.filter(m=>m.date.slice(0,7)===mk).length;
 return `<div class="card cal"><div class="calh"><b>${cm.toLocaleDateString(undefined,{month:'long',year:'numeric'})} <span class="meta">· ${nm} meeting${nm===1?'':'s'}</span></b><span><button class="ghost" onclick="calNav(-1)" aria-label="Previous month">‹</button><button class="ghost" onclick="calNav(0)">Today</button><button class="ghost" onclick="calNav(1)" aria-label="Next month">›</button></span></div><div class="cg">${wd.map(w=>`<div class="wd">${w}</div>`).join('')}${cells}</div><h2 style="margin-top:16px">${new Date(selDay+'T00:00').toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'})} <span class="meta">· ${day.length} meeting${day.length===1?'':'s'}</span></h2>${day.map(m=>`<div class="row click" onclick="openD(event,'meetings',${m.id})"><span>${m.time?esc(m.time)+' · ':''}${esc(m.title)}</span><span class="meta">${m.who?esc(m.who):''}${m.link?' · link':''}</span></div>`).join('')||'<div class="empty">No meetings this day. Add one with the form below.</div>'}</div><div style="height:16px"></div>`}
+const SB_URL='https://qawyvpkkorynsnkvyfzj.supabase.co',SB_KEY='sb_publishable_AInq7vY0ovixRdJWrzrCwA_3b8u2V2-';
+let sb=null,user=null,snap={},timer=null,busy=false,again=false;
+let gm=null,gv={code:'',email:''},recovering=/type=recovery/.test(location.hash),pend=null;
+try{sb=supabase.createClient(SB_URL,SB_KEY)}catch(e){}
+const EMPTY=()=>({tasks:[],meetings:[],notes:[],goals:[]});
+const js=o=>JSON.stringify(o,Object.keys(o).sort());
+function setSt(s){const e=document.getElementById('sync');if(!e)return;e.textContent={syncing:'Saving\u2026',saved:'Saved',error:'Not synced. Check your connection.'}[s]||'';e.style.color=s==='error'?'var(--er)':''}
+function rows(){const r={};Object.keys(EMPTY()).forEach(k=>S[k].forEach(o=>{const i=String(o.id);r[i]={j:js(o),r:{user_id:user.id,id:i,kind:k,data:o,updated_at:new Date().toISOString()}}}));return r}
+function sched(){clearTimeout(timer);setSt('syncing');timer=setTimeout(()=>{timer=null;push()},500)}
+async function push(){if(!sb||!user)return true;if(busy){again=true;return true}busy=true;
+const cur=rows(),up=[],dl=[];
+for(const k in cur){if(snap[k]!==cur[k].j)up.push(k)}
+for(const k in snap)if(!(k in cur))dl.push(k);
+let ok=true;
+try{
+if(up.length){const {error}=await sb.from('records').upsert(up.map(k=>cur[k].r),{onConflict:'user_id,id'});if(error)throw error;up.forEach(k=>{snap[k]=cur[k].j})}
+if(dl.length){const {error}=await sb.from('records').delete().in('id',dl);if(error)throw error;dl.forEach(k=>{delete snap[k]})}
+setSt('saved')}catch(e){ok=false;setSt('error')}
+busy=false;if(again){again=false;return push()}return ok}
+function apply(data){const n=EMPTY();snap={};
+data.forEach(r=>{if(!n[r.kind])return;const o=Object.assign({},r.data,{id:Number(r.id)});n[r.kind].push(o);snap[String(o.id)]=js(o)});
+for(const k in n)n[k].sort((a,b)=>b.id-a.id);S=n;render()}
+async function boot(){hideGate();document.getElementById('out').style.display='';setSt('syncing');
+const {data,error}=await sb.from('records').select('*');
+if(error){setSt('error');return}
+if(!data.length&&Object.keys(EMPTY()).some(k=>S[k].length)){snap={};if(await push()){try{localStorage.removeItem(KEY)}catch(e){}}return}
+apply(data);setSt('saved');anim()}
+async function refresh(){if(!sb||!user||busy||timer)return;
+const {data,error}=await sb.from('records').select('*');if(error||busy||timer)return;
+const ns={};data.forEach(r=>{ns[r.id]=js(Object.assign({},r.data,{id:Number(r.id)}))});
+const f=m=>JSON.stringify(Object.keys(m).sort().map(k=>[k,m[k]]));
+if(f(ns)!==f(snap))apply(data)}
+function nice(e){const m=(e&&e.message||'').toLowerCase();
+if(m.includes('invalid login'))return 'Wrong email or password. New here? Choose Create account.';
+if(m.includes('already registered')||m.includes('already been registered'))return 'This email already has an account. Choose Sign in.';
+if(m.includes('email not confirmed'))return 'Please confirm your email first. Check your inbox and spam folder.';
+if(m.includes('rate limit')||m.includes('too many'))return 'Too many attempts. Please wait a few minutes and try again.';
+if(m.includes('password')&&(m.includes('least')||m.includes('weak')||m.includes('short')))return 'Password is too short. Use at least 6 characters.';
+if(m.includes('database error saving'))return 'Sign-up was blocked. Check the access code.';
+if(m.includes('failed to fetch')||m.includes('network'))return 'Cannot reach the server. Check your internet connection.';
+if(m.includes('invalid email')||m.includes('unable to validate'))return 'That email address does not look valid.';
+return e&&e.message?e.message:'Something went wrong. Try again.'}
+function readGv(){const f=document.getElementById('af');if(!f)return;if(f.code)gv.code=f.code.value;if(f.email)gv.email=f.email.value}
+function msg(t,k){const e=document.getElementById('am');if(!e)return;e.textContent=t||'';e.className='meta '+(k||'')}
+function togglePw(v){document.querySelectorAll('.pw').forEach(i=>{i.type=v?'text':'password'})}
+function hideGate(){gm=null;document.getElementById('gate').innerHTML=''}
+function showGate(mode,t,k){readGv();gm=mode;
+const tabs=(mode==='in'||mode==='up')?`<div class="tabs"><button type="button" class="${mode==='in'?'on':''}" onclick="showGate('in')">Sign in</button><button type="button" class="${mode==='up'?'on':''}" onclick="showGate('up')">Create account</button></div>`:'';
+const pw=(n,ph,au)=>`<input class="pw" type="password" name="${n}" placeholder="${ph}" required minlength="6" autocomplete="${au}" style="width:100%">`;
+const code=`<input class="pw" type="password" name="code" inputmode="numeric" placeholder="Access code" required autocomplete="off" value="${esc(gv.code)}" style="width:100%">`;
+const em=`<input type="email" name="email" placeholder="Email" required autocomplete="email" value="${esc(gv.email)}" style="width:100%">`;
+const show='<label class="chk"><input type="checkbox" onchange="togglePw(this.checked)"> Show password and code</label>';
+let body;
+if(mode==='in')body=`${code}${em}${pw('pw','Password','current-password')}${show}<button class="btn" style="width:100%">Sign in</button><button type="button" class="ghost" onclick="showGate('forgot')">Forgot password?</button>`;
+else if(mode==='up')body=`${code}${em}${pw('pw','Password (at least 6 characters)','new-password')}${pw('pw2','Repeat password','new-password')}${show}<button class="btn" style="width:100%">Create account</button>`;
+else if(mode==='forgot')body=`${em}<button class="btn" style="width:100%">Send reset link</button><button type="button" class="ghost" onclick="showGate('in')">Back to sign in</button>`;
+else body=`${pw('pw','New password (at least 6 characters)','new-password')}${pw('pw2','Repeat new password','new-password')}${show}<button class="btn" style="width:100%">Save new password</button>`;
+const head={in:'Welcome back. Sign in to continue.',up:'Create your account. You need the access code.',forgot:'Enter your email to get a reset link.',newpw:'Choose a new password.'}[mode];
+document.getElementById('gate').innerHTML=`<div class="gate"><div class="card" style="width:100%;max-width:390px"><h1 style="margin-bottom:4px">Startup Dashboard</h1><div class="meta" style="margin-bottom:14px">${head}</div>${tabs}<form id="af" onsubmit="event.preventDefault();doAuth()" style="flex-direction:column;margin:0">${body}</form><div id="am" class="meta" role="alert" style="margin-top:10px"></div></div></div>`;
+if(t)msg(t,k)}
+async function doAuth(){const f=document.getElementById('af');if(!f||!f.reportValidity())return;readGv();
+const b=f.querySelector('.btn'),mode=gm,email=f.email?f.email.value.trim():'',pw=f.pw?f.pw.value:'',code=f.code?f.code.value.trim():'';
+if((mode==='up'||mode==='newpw')&&pw!==f.pw2.value){msg('The two passwords do not match.','bad');return}
+b.disabled=true;msg('Please wait\u2026');
+try{
+if(mode==='forgot'){const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});if(error)throw error;msg('If an account exists for that email, a reset link is on its way. Check your inbox and spam.','ok');return}
+if(mode==='newpw'){const {error}=await sb.auth.updateUser({password:pw});if(error)throw error;recovering=false;user=pend;history.replaceState(null,'',location.pathname);boot();return}
+const {data:ok,error:ce}=await sb.rpc('check_access_code',{code});
+if(ce){console.error(ce);msg('Setup is not finished: the access code check is missing in Supabase. Run the setup SQL, then try again.','bad');return}
+if(!ok){msg('That access code is not correct.','bad');return}
+if(mode==='in'){const {error}=await sb.auth.signInWithPassword({email,password:pw});if(error)throw error;msg('Signing you in\u2026','ok')}
+else{const {data,error}=await sb.auth.signUp({email,password:pw,options:{data:{access_code:code},emailRedirectTo:location.origin+location.pathname}});if(error)throw error;
+if(data.session)msg('Account created. Signing you in\u2026','ok');
+else if(data.user&&data.user.identities&&!data.user.identities.length)msg('This email already has an account. Choose Sign in.','bad');
+else msg('Account created. Check your email and click the confirmation link, then sign in.','ok')}
+}catch(e){msg(nice(e),'bad')}finally{b.disabled=false}}
+async function signOut(){if(timer){clearTimeout(timer);timer=null;await push()}await sb.auth.signOut()}
 render();anim();
+if(sb){sb.auth.onAuthStateChange((ev,ses)=>{
+if(ses&&ses.user){
+if(recovering){if(ev!=='USER_UPDATED'){pend=ses.user;if(gm!=='newpw')showGate('newpw')}return}
+if(!user||user.id!==ses.user.id){user=ses.user;setTimeout(boot,0)}
+}else{user=null;
+if(ev==='SIGNED_OUT'){clearTimeout(timer);timer=null;S=EMPTY();snap={};document.getElementById('out').style.display='none';setSt('');render();gm=null}
+if(gm===null)showGate('in')}})}
+else showGate('in','Could not load the sign-in service. Check your connection and refresh the page.','bad');
+setTimeout(()=>{if(!user&&gm===null&&document.getElementById('gate').firstChild)showGate('in')},6000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
 </script>
 </body>
 </html>
