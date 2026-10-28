@@ -341,7 +341,7 @@ if(m.includes('database error saving'))return 'Sign-up was blocked. Check the ac
 if(m.includes('failed to fetch')||m.includes('network'))return 'Cannot reach the server. Check your internet connection.';
 if(m.includes('invalid email')||m.includes('unable to validate'))return 'That email address does not look valid.';
 return e&&e.message?e.message:'Something went wrong. Try again.'}
-function readGv(){const f=document.getElementById('af');if(!f)return;if(f.code)gv.code=f.code.value;if(f.email)gv.email=f.email.value}
+function readGv(){const f=document.getElementById('af');if(!f)return;const e=f.elements;if(e.code)gv.code=e.code.value;if(e.email)gv.email=e.email.value}
 function msg(t,k){const e=document.getElementById('am');if(!e)return;e.textContent=t||'';e.className='meta '+(k||'')}
 function togglePw(v){document.querySelectorAll('.pw').forEach(i=>{i.type=v?'text':'password'})}
 function hideGate(){gm=null;document.getElementById('gate').innerHTML=''}
@@ -360,8 +360,8 @@ const head={in:'Welcome back. Sign in to continue.',up:'Create your account. You
 document.getElementById('gate').innerHTML=`<div class="gate"><div class="card" style="width:100%;max-width:390px"><h1 style="margin-bottom:4px">Startup Dashboard</h1><div class="meta" style="margin-bottom:14px">${head}</div>${tabs}<form id="af" onsubmit="event.preventDefault();doAuth()" style="flex-direction:column;margin:0">${body}</form><div id="am" class="meta" role="alert" style="margin-top:10px"></div></div></div>`;
 if(t)msg(t,k)}
 async function doAuth(){const f=document.getElementById('af');if(!f||!f.reportValidity())return;readGv();
-const b=f.querySelector('.btn'),mode=gm,email=f.email?f.email.value.trim():'',pw=f.pw?f.pw.value:'',code=f.code?f.code.value.trim():'';
-if((mode==='up'||mode==='newpw')&&pw!==f.pw2.value){msg('The two passwords do not match.','bad');return}
+const E=f.elements,b=f.querySelector('.btn'),mode=gm,email=E.email?E.email.value.trim():'',pw=E.pw?E.pw.value:'',code=E.code?E.code.value.trim():'';
+if((mode==='up'||mode==='newpw')&&pw!==E.pw2.value){msg('The two passwords do not match.','bad');return}
 b.disabled=true;msg('Please wait\u2026');
 try{
 if(mode==='forgot'){const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});if(error)throw error;msg('If an account exists for that email, a reset link is on its way. Check your inbox and spam.','ok');return}
